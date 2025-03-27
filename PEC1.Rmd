@@ -9,5 +9,173 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+```{r}
+library(SummarizedExperiment)
+library(tidyverse)
+library(POMA)
+library(EnhancedVolcano)
+```
+
+https://rdrr.io/cran/specmine.datasets/man/cachexia.html
+
+# Cargamos el csv de Cachexia
+
+```{r}
+cachexia <- read.csv("human_cachexia.csv", check.names = FALSE) 
+```
+
+# Preparamos el SummarizedExperiment
+
+```{r}
+# Obtenemos los metadatos de las muestras
+sample_metadata <- cachexia[, 1:2]
+
+rownames(sample_metadata) <- cachexia$`Patient ID`
+```
+
+```{r}
+# Preparamos la matriz de expresión de los metabolitos
+expr_matrix <- as.matrix(cachexia[, -(1:2)])
+rownames(expr_matrix) <- sample_metadata$`Patient ID` # Mismo orden
+
+expr_matrix <- t(expr_matrix)
+```
+
+```{r}
+# Crear SummarizedExperiment
+se <- SummarizedExperiment(
+  assays = list(counts = expr_matrix),
+  colData = sample_metadata
+)
+se
+```
+
+```{r}
+colData(se)
+```
+
+
+
+```{r}
+table(cachexia$`Muscle loss`)
+```
+
+
+```{r}
+# Acceder a la matriz de expresión
+expr_unn <- assay(se)  # si solo tienes una matriz en assays(se)
+
+# Asegúrate de que el orden de colores coincida con las columnas de expr
+grupos <- colData(se)$`Muscle loss`  # por ejemplo
+colores <- ifelse(grupos == "cachexic", "red", "blue")
+
+# Crear boxplot
+boxplot(expr_unn,
+        las = 2,
+        col = colores,
+        cex.axis = 0.8,
+        main = "Distribución de los valores de expresión")
+```
+```{r}
+#Normalización
+expr_norm <- log2(assay(se))
+# Crear boxplot
+boxplot(expr_norm,
+        las = 2,
+        col = colores,
+        cex.axis = 0.8,
+        main = "Distribución de los valores de expresión")
+```
+
+
+```{r}
+# Obtener expresión y grupos
+grupo <- colData(se)$`Muscle loss`
+# Calcular medianas por muestra
+medianas <- apply(expr_norm, 2, median)
+
+# Crear boxplot por grupo
+boxplot(medianas ~ grupo,
+        col = c("red", "blue"),
+        main = "Mediana de expresión por grupo",
+        ylab = "Mediana de expresión")
+
+```
+# PCA
+
+```{r}
+pc <-prcomp(t(expr_norm), scale=FALSE)
+loads <- round(pc$sdev^2 / sum(pc$sdev^2) * 100, 1)
+```
+
+
+
+```{r}
+pacientes_ID <- cachexia[ ,1]
+
+xlab<-c(paste("PC1",loads[1],"%"))
+ylab<-c(paste("PC2",loads[2],"%"))
+plot(pc$x[,1:2],xlab=xlab,ylab=ylab, col=colores, 
+     main ="Principal components (PCA)")
+#names2plot<-substr(pacientes_ID, 1, 4)
+
+text(pc$x[,1],pc$x[,2],names2plot, pos=3, cex=.6)
+```
+# Dendograma
+
+```{r}
+# Distancia y clustering jerárquico
+d <- dist(t(expr_norm))  # si estás usando un SummarizedExperiment
+hc <- hclust(d, method = "average")
+
+# Dibujar dendrograma
+hc$labels <- gsub("_.*", "", hc$labels)  
+plot(hc, main = "Dendrograma por tipo de muestra", cex = 0.7)
+rect.hclust(hc, k = 2, border = c("red", "blue"))
+
+```
+# DEG
+```{r}
+ttest <- function(x) {
+  tt = t.test(x[1:47], x[48:77])
+  return(c(
+    t = tt$statistic,
+    p.value = tt$p.value,
+    log2FC = log2(mean(x[1:47]) / mean(x[48:77]))
+  ))
+}
+
+ans <- apply(expr_norm, 1, ttest)
+```
+
+
+
+```{r}
+# Convertimos la matriz a data.frame
+ttest_df <- as.data.frame(t(ans))
+
+# Añadir nombres de los metabolitos (features)
+ttest_df$feature <- rownames(ttest_df)
+```
+
+
+
+
+```{r}
+EnhancedVolcano(ttest_df,
+                lab = ttest_df$feature,
+                x = 'log2FC',
+                y = 'p.value',
+                pCutoff = 0.05,
+                FCcutoff = 0.5,  # más sensible
+                pointSize = 2,
+                labSize = 3,
+                title = 'Volcano Plot - Metabolitos')
+
+```
+
+
+
+
 
 
