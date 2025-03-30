@@ -22,20 +22,29 @@ https://rdrr.io/cran/specmine.datasets/man/cachexia.html
 
 ```{r}
 cachexia <- read.csv("human_cachexia.csv", check.names = FALSE) 
+
+cachexia$Cancer_Type <- sub("_.*", "", cachexia$`Patient ID`) # Nueva columna con tipo de cáncer
+
+cachexia <- cachexia %>% relocate(Cancer_Type, .after = 2) # La colocamos la tercera por comodidad
+
+cachexia$`Patient ID`[cachexia$`Muscle loss` == "cachexic"] <- paste0("CA-", 1:sum(cachexia$`Muscle loss` == "cachexic")) #Los renombramos de una manera más visible
+cachexia$`Patient ID`[cachexia$`Muscle loss` == "control"] <- paste0("CT-", 1:sum(cachexia$`Muscle loss` == "control"))
+
 ```
+
 
 # Preparamos el SummarizedExperiment
 
 ```{r}
 # Obtenemos los metadatos de las muestras
-sample_metadata <- cachexia[, 1:2]
+sample_metadata <- cachexia[, 1:3]
 
 rownames(sample_metadata) <- cachexia$`Patient ID`
 ```
 
 ```{r}
 # Preparamos la matriz de expresión de los metabolitos
-expr_matrix <- as.matrix(cachexia[, -(1:2)])
+expr_matrix <- as.matrix(cachexia[, -(1:3)])
 rownames(expr_matrix) <- sample_metadata$`Patient ID` # Mismo orden
 
 expr_matrix <- t(expr_matrix)
@@ -76,6 +85,7 @@ boxplot(expr_unn,
         cex.axis = 0.8,
         main = "Distribución de los valores de expresión")
 ```
+
 ```{r}
 #Normalización
 expr_norm <- log2(assay(se))
@@ -97,10 +107,11 @@ medianas <- apply(expr_norm, 2, median)
 # Crear boxplot por grupo
 boxplot(medianas ~ grupo,
         col = c("red", "blue"),
-        main = "Mediana de expresión por grupo",
-        ylab = "Mediana de expresión")
+        main = "Mediana de concentración por grupo",
+        ylab = "Mediana de concentración")
 
 ```
+
 # PCA
 
 ```{r}
@@ -115,12 +126,37 @@ pacientes_ID <- cachexia[ ,1]
 
 xlab<-c(paste("PC1",loads[1],"%"))
 ylab<-c(paste("PC2",loads[2],"%"))
+
 plot(pc$x[,1:2],xlab=xlab,ylab=ylab, col=colores, 
      main ="Principal components (PCA)")
-#names2plot<-substr(pacientes_ID, 1, 4)
 
-text(pc$x[,1],pc$x[,2],names2plot, pos=3, cex=.6)
+legend("topright", inset=c(-0.06,0),  # mueve la leyenda fuera
+       legend=c("cachexia", "control"), 
+       col=c("red", "blue"), 
+       pch=19, xpd=TRUE)
+
+text(pc$x[,1],pc$x[,2],pacientes_ID, pos=3, cex=.6)
 ```
+# Batch Effect
+
+```{r}
+grupo_batch <- colData(se)$Cancer_Type
+colores_batch <- ifelse(grupo_batch == "PIF", "red",
+                  ifelse(grupo_batch == "NETCR", "blue",
+                         "green"))
+
+plot(pc$x[,1:2],xlab=xlab,ylab=ylab, col=colores_batch, 
+     main ="Principal components (PCA)")
+
+legend("topright", inset=c(-0.05,0),  # mueve la leyenda fuera
+       legend=c("PIF", "NETCR", "NETCL"), 
+       col=c("red", "blue", "green"), 
+       pch=19, xpd=TRUE)
+
+text(pc$x[,1],pc$x[,2],pacientes_ID, pos=3, cex=.6)
+```
+
+
 # Dendograma
 
 ```{r}
@@ -134,6 +170,7 @@ plot(hc, main = "Dendrograma por tipo de muestra", cex = 0.7)
 rect.hclust(hc, k = 2, border = c("red", "blue"))
 
 ```
+
 # DEG
 ```{r}
 ttest <- function(x) {
@@ -157,8 +194,6 @@ ttest_df <- as.data.frame(t(ans))
 # Añadir nombres de los metabolitos (features)
 ttest_df$feature <- rownames(ttest_df)
 ```
-
-
 
 
 ```{r}
