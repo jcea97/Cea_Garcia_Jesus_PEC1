@@ -2,88 +2,130 @@
 title: "ADO PEC1"
 author: "Jesús Cea García"
 date: "`r Sys.Date()`"
-output: html_document
----
+output:
+  pdf_document: default
+  html_document: default
+--- 
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r}
+```{r, include=FALSE}
 library(SummarizedExperiment)
 library(tidyverse)
 library(POMA)
 library(EnhancedVolcano)
 ```
 
-https://rdrr.io/cran/specmine.datasets/man/cachexia.html
-
-# Cargamos el csv de Cachexia
-
-```{r}
+```{r, include=FALSE}
+# Cargo el csv 
 cachexia <- read.csv("human_cachexia.csv", check.names = FALSE) 
 
-cachexia$Cancer_Type <- sub("_.*", "", cachexia$`Patient ID`) # Nueva columna con tipo de cáncer
+# Creo la columna Cancer_Type
+cachexia$Cancer_Type <- sub("_.*", "", cachexia$`Patient ID`) 
 
-cachexia <- cachexia %>% relocate(Cancer_Type, .after = 2) # La colocamos la tercera por comodidad
+# Reordeno columnas
+cachexia <- cachexia %>% relocate(Cancer_Type, .after = 2) 
 
-cachexia$`Patient ID`[cachexia$`Muscle loss` == "cachexic"] <- paste0("CA-", 1:sum(cachexia$`Muscle loss` == "cachexic")) #Los renombramos de una manera más visible
+# Renombramos pacientes
+cachexia$`Patient ID`[cachexia$`Muscle loss` == "cachexic"] <- paste0("CA-", 1:sum(cachexia$`Muscle loss` == "cachexic")) 
 cachexia$`Patient ID`[cachexia$`Muscle loss` == "control"] <- paste0("CT-", 1:sum(cachexia$`Muscle loss` == "control"))
 
-```
-
-
-# Preparamos el SummarizedExperiment
-
-```{r}
-# Obtenemos los metadatos de las muestras
+# Preparo los metadatos
 sample_metadata <- cachexia[, 1:3]
-
 rownames(sample_metadata) <- cachexia$`Patient ID`
-```
 
-```{r}
-# Preparamos la matriz de expresión de los metabolitos
+# Preparo la matriz de expresión
 expr_matrix <- as.matrix(cachexia[, -(1:3)])
-rownames(expr_matrix) <- sample_metadata$`Patient ID` # Mismo orden
-
+rownames(expr_matrix) <- sample_metadata$`Patient ID` 
 expr_matrix <- t(expr_matrix)
-```
 
-```{r}
-# Crear SummarizedExperiment
+# Creo el SummarizedExperiment
 se <- SummarizedExperiment(
   assays = list(counts = expr_matrix),
   colData = sample_metadata
 )
-se
-```
 
-```{r}
-colData(se)
-```
-
-
-
-```{r}
+# Muestro la proporciones
 table(cachexia$`Muscle loss`)
 ```
 
 
-```{r}
-# Acceder a la matriz de expresión
-expr_unn <- assay(se)  # si solo tienes una matriz en assays(se)
+# 1. Abstract
 
-# Asegúrate de que el orden de colores coincida con las columnas de expr
+En este trabajo se construyó un objeto *SummarizedExperiment* a partir de datos de metabolómica en orina de pacientes caquéxicos y controles. Se exploraron las concentraciones de metabolitos por grupo, observando diferencias claras entre ambos. Un análisis de componentes principales (PCA) evidenció una separación más o menos marcada entre caquéxicos y controles, sin mostrar *batch effect* asociado al tipo de cáncer. Además, un dendrograma confirmó esta separación a nivel jerárquico. Finalmente, se realizó un análisis de expresión diferencial y un volcano plot y se identificaron metabolitos con diferencias significativas de concentración entre los grupos, los cuales pueden ser potencialmente relevantes como biomarcadores de caquexia.
+
+# 2. Objetivos
+
+Los objetivos de este trabajo se enumeran a continuación:
+
+1. Integrar los datos metabolómicos de un archivo .csv, separando la información de concentraciones, metadatos y características de los metabolitos, para construir un objeto de clase *SummarizedExperiment*.
+
+2. Explorar las diferencias globales en las concentraciones de metabolitos entre pacientes caquéxicos y controles.
+
+3. Discriminar entre ambos grupos mediante técnicas de análisis multivariante.
+
+4. Detectar y caracterizar posibles efectos de batch relacionados con el tipo de cáncer.
+
+5. Identificar metabolitos diferencialmente expresados que puedan actuar como biomarcadores asociados a la caquexia
+
+# 3. Métodos
+
+## 3.1. Origen de los datos
+
+Los datos utilizados provienen del repositorio habilitado para la PEC de la asignatura, los cuales parecen provenir del paquete de R specmine.datasets. Este dataset contiene datos provenientes del estudio de Eisner et al. (2010), en el que se analizaron perfiles de 63 metabolitos en muestras de orina (concentración en $\mu$M) de pacientes oncológicos mediante espectroscopía de resonancia magnética nuclear (1H-NMR). El estudio tuvo como objetivo identificar metabolitos asociados a la pérdida de masa muscular en pacientes con caquexia. El conjunto de datos estaba compuesto por 77 pacientes, distribuidos en 47 caquéxicos y 30 controles. Los IDs de las muestras incluían siglas como PIF, NETCR y NETL, que se consideraron como tipos de cáncer y se incorporaron al análisis para aportar una dimensión adicional al análisis posterior.
+
+## 3.2. Construcción del objeto *SummarizedExperiment*
+
+Se cargaron los datos de metabolómica desde un archivo .csv y se realizó una preprocesamiento inicial, que incluyó la creación de una columna adicional con el tipo de cáncer y la renombración de las muestras para distinguir claramente entre pacientes caquéxicos y controles en el ID. Posteriormente, se extrajeron los metadatos de las muestras y la matriz de concentración de metabolitos. Finalmente, se construyó el objeto de clase *SummarizedExperiment*, integrando la matriz de expresión y los metadatos de las muestras con la función *SummarizedExperiment()* siguiendo el tutorial de [CITA].
+
+## 3.3. Normalización de los datos
+
+Para estabilizar la varianza y reducir la influencia de valores extremos, las concentraciones de metabolitos fueron transformadas mediante logaritmo en base 2. Esta normalización se aplicó directamente a la matriz de expresión (concentración) contenida en el objeto *SummarizedExperiment* con la función log2(). 
+
+## 3.4 Análisis univariante
+
+Como primer análisis exploratorio, se calculó la mediana de las concentraciones normalizadas de metabolitos para cada muestra. . Posteriormente, se representaron las medianas mediante un boxplot por grupo, mostrando las diferencias en las distribuciones de las concentraciones globales de metabolitos entre ambos conjuntos de pacientes.
+
+## 3.4. Análisis multivariante y Batch Effect
+
+Se realizó un análisis de componentes principales (PCA) utilizando las concentraciones normalizadas de metabolitos. Las muestras fueron representadas diferenciando tanto el grupo de estudio (caquéxicos y controles) como el tipo de cáncer (PIF, NETCR, NETL) mediante codificación de colores, con el objetivo de explorar la variabilidad y evaluar posibles efectos de agrupación o batch effect. Además, se realizó un análisis de clustering jerárquico mediante distancias euclídeas, representando los resultados en un dendrograma con separación visual en dos grupos para ver si existe separación entre caquéxicos y controles.
+
+## 3.5. Análisis de expresión diferencial
+
+Se realizó un análisis de expresión diferencial para comparar las concentraciones de metabolitos entre pacientes caquéxicos y controles. Para cada metabolito, se aplicó un test t de Student, calculando además el log2 fold change entre ambos grupos. Los resultados se representaron mediante un volcano plot con la librería *EnhancedVolcano()*, resaltando aquellos metabolitos con cambios significativos en concentración.
+
+
+# 4. Resultados
+
+## 4.1 Caracterización inicial de los datos
+
+```{r, echo=FALSE}
+knitr::kable(head(as.data.frame(colData(se))[ , -1]), caption = "Metadatos de las muestras")
+
+tabla_grupo <- as.data.frame(table(cachexia$`Muscle loss`))
+colnames(tabla_grupo) <- c("Condición", "Frecuencia")
+
+knitr::kable(tabla_grupo, caption = "Distribución de pacientes por grupo")
+knitr::kable(head(expr_matrix[, 1:10]), caption = "Matriz de expresión")
+```
+
+
+```{r}
+# Accedo a la matriz de expresión
+expr_unn <- assay(se)  
+
+# Defino los grupos y sus colores
 grupos <- colData(se)$`Muscle loss`  # por ejemplo
 colores <- ifelse(grupos == "cachexic", "red", "blue")
 
-# Crear boxplot
+# Creo el boxplot
 boxplot(expr_unn,
         las = 2,
         col = colores,
         cex.axis = 0.8,
-        main = "Distribución de los valores de expresión")
+        main = "Distribución de los valores de concentración")
 ```
 
 ```{r}
@@ -94,7 +136,7 @@ boxplot(expr_norm,
         las = 2,
         col = colores,
         cex.axis = 0.8,
-        main = "Distribución de los valores de expresión")
+        main = "Distribución de los valores de concentración")
 ```
 
 
@@ -137,6 +179,7 @@ legend("topright", inset=c(-0.06,0),  # mueve la leyenda fuera
 
 text(pc$x[,1],pc$x[,2],pacientes_ID, pos=3, cex=.6)
 ```
+
 # Batch Effect
 
 ```{r}
@@ -161,12 +204,12 @@ text(pc$x[,1],pc$x[,2],pacientes_ID, pos=3, cex=.6)
 
 ```{r}
 # Distancia y clustering jerárquico
-d <- dist(t(expr_norm))  # si estás usando un SummarizedExperiment
+d <- dist(t(expr_norm))  
 hc <- hclust(d, method = "average")
 
-# Dibujar dendrograma
+# Dibujo el dendrograma
 hc$labels <- gsub("_.*", "", hc$labels)  
-plot(hc, main = "Dendrograma por tipo de muestra", cex = 0.7)
+plot(hc, main = "Dendrograma por muestra", cex = 0.7)
 rect.hclust(hc, k = 2, border = c("red", "blue"))
 
 ```
@@ -202,7 +245,7 @@ EnhancedVolcano(ttest_df,
                 x = 'log2FC',
                 y = 'p.value',
                 pCutoff = 0.05,
-                FCcutoff = 0.5,  # más sensible
+                FCcutoff = 0.5, 
                 pointSize = 2,
                 labSize = 3,
                 title = 'Volcano Plot - Metabolitos')
@@ -213,4 +256,4 @@ EnhancedVolcano(ttest_df,
 
 
 
-
+https://rdrr.io/cran/specmine.datasets/man/cachexia.html
