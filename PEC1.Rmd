@@ -96,10 +96,11 @@ Se realizó un análisis de componentes principales (PCA) utilizando las concent
 
 Se realizó un análisis de expresión diferencial para comparar las concentraciones de metabolitos entre pacientes caquéxicos y controles. Para cada metabolito, se aplicó un test t de Student, calculando además el log2 fold change entre ambos grupos. Los resultados se representaron mediante un volcano plot con la librería *EnhancedVolcano()*, resaltando aquellos metabolitos con cambios significativos en concentración.
 
-
 # 4. Resultados
 
 ## 4.1 Caracterización inicial de los datos
+
+Tras la construcción del *SummarizedExperiment* se realizó una primera exploración del objeto donde se visualizaron los primeros registros de metadatos de las muestras (Tabla 1), la distribución de los pacientes en función de la condición (Tabla 2) y los primeros registros de la matriz de expresión (Tabla 3). Se observa que los metadatos se crearon correctmente, con los IDs de los pacientes, el tipo de cáncer y la condición de pérdida de masa muscular (47 caquéxicos y 30 controles). También se observa que la matriz de expresión se genéro, con los 63 metabolitos en las filas y sus concentraciones por paciente (columnas).
 
 ```{r, echo=FALSE}
 knitr::kable(head(as.data.frame(colData(se))[ , -1]), caption = "Metadatos de las muestras")
@@ -111,8 +112,11 @@ knitr::kable(tabla_grupo, caption = "Distribución de pacientes por grupo")
 knitr::kable(head(expr_matrix[, 1:10]), caption = "Matriz de expresión")
 ```
 
+## 4.2 Análisis univariante de la concentración de metabolitos por condición.
 
-```{r}
+En primer lugar, se realizó una exploración preliminar de las concentraciones de metabolitos sin normalizar. En la Figura 1 se representa la distribución de los valores de concentración para cada muestra, diferenciando visualmente a los pacientes caquéxicos y controles. Se observa una elevada dispersión y la presencia de valores extremos, con algunas muestras mostrando metabolitos con concentraciones notablemente superiores al resto. Debido a esto, se procedió al normalizado de los datos con una transformación logarítmica en base 2.
+
+```{r, fig.cap="Distribución de los valores de concentración sin normalizar.", echo=FALSE}
 # Accedo a la matriz de expresión
 expr_unn <- assay(se)  
 
@@ -127,8 +131,9 @@ boxplot(expr_unn,
         cex.axis = 0.8,
         main = "Distribución de los valores de concentración")
 ```
+Tras el proceso de normalización, se representa en la Figura 2 la distribución de las concentraciones de metabolitos para cada muestra. Se observa una notable reducción de la dispersión y de los valores extremos respecto a las concentraciones sin normalizar. Además, las distribuciones de ambos grupos (caquéxicos y controles) presentan ahora rangos de concentración más homogéneos.
 
-```{r}
+```{r, fig.cap="Distribución de los valores de concentración normalizados.", echo=FALSE}
 #Normalización
 expr_norm <- log2(assay(se))
 # Crear boxplot
@@ -138,9 +143,9 @@ boxplot(expr_norm,
         cex.axis = 0.8,
         main = "Distribución de los valores de concentración")
 ```
+A continuación, se compararon las medianas de concentración de metabolitos a nivel de muestra entre pacientes caquéxicos y controles. La Figura 3 muestra los boxplot resultantes, donde se observa que las muestras caquéxicas presentan, en general, valores superiores a las de los controles.
 
-
-```{r}
+```{r, fig.cap="Comparación de la mediana de concentración entre caquéxicos y controles.", echo=FALSE}
 # Obtener expresión y grupos
 grupo <- colData(se)$`Muscle loss`
 # Calcular medianas por muestra
@@ -154,17 +159,20 @@ boxplot(medianas ~ grupo,
 
 ```
 
-# PCA
+## 4.3 Análisis multivariante: PCA y Batch Effect
 
-```{r}
-pc <-prcomp(t(expr_norm), scale=FALSE)
-loads <- round(pc$sdev^2 / sum(pc$sdev^2) * 100, 1)
+```{r, include=FALSE}
+pc <-prcomp(t(expr_norm), scale=FALSE) #PCA sobre los datos normalizados
+loads <- round(pc$sdev^2 / sum(pc$sdev^2) * 100, 1) #Varianza explicada por PC
 ```
 
+El objetivo del PCA fue explorar si existe separación entre los individuos caquéxicos y los controles en función de las concentraciones de metabolitos en orina, reduciendo así la dimensionalidad de los datos originales (63 metabolitos por muestra) a un espacio bidimensional formado por las dos primeras componentes principales, que explican la mayor parte de la varianza. En la Figura 4 se observa una cierta separación entre los individuos control (en azul) y los caquéxicos (en rojo) principalmente a lo largo de la PC1, que es la que captura la mayor variabilidad de los datos, lo cual sugiere que existen diferencias en el perfil metabolómico entre ambos grupos. 
 
+```{r, fig.cap="Análisis PCA de las concentraciones de metabolitos por condición", echo=FALSE}
+# Representación de las muestras en el espacio definido por las dos primeras componentes principales (PCA),
+# diferenciando por condición
 
-```{r}
-pacientes_ID <- cachexia[ ,1]
+pacientes_ID <- cachexia[ ,1] 
 
 xlab<-c(paste("PC1",loads[1],"%"))
 ylab<-c(paste("PC2",loads[2],"%"))
@@ -172,7 +180,7 @@ ylab<-c(paste("PC2",loads[2],"%"))
 plot(pc$x[,1:2],xlab=xlab,ylab=ylab, col=colores, 
      main ="Principal components (PCA)")
 
-legend("topright", inset=c(-0.06,0),  # mueve la leyenda fuera
+legend("bottomleft",
        legend=c("cachexia", "control"), 
        col=c("red", "blue"), 
        pch=19, xpd=TRUE)
@@ -180,10 +188,12 @@ legend("topright", inset=c(-0.06,0),  # mueve la leyenda fuera
 text(pc$x[,1],pc$x[,2],pacientes_ID, pos=3, cex=.6)
 ```
 
-# Batch Effect
 
-```{r}
+Posteriormente y con el objetivo de comprobar la presencia de un posible batch effect asociado al tipo de cáncer, se representaron las muestras en el espacio de las dos primeras componentes principales diferenciando los tipos de los mismos (PIF, NETCR y NETCL). En la Figura 5 no se aprecia una separación clara de las muestras según su tipo de cáncer, indicando que no parece haber un batch effect por esta variable.
+
+```{r, fig.cap="Análisis PCA de las concentraciones de metabolitos por tipo de cáncer", echo=FALSE}
 grupo_batch <- colData(se)$Cancer_Type
+
 colores_batch <- ifelse(grupo_batch == "PIF", "red",
                   ifelse(grupo_batch == "NETCR", "blue",
                          "green"))
@@ -191,18 +201,16 @@ colores_batch <- ifelse(grupo_batch == "PIF", "red",
 plot(pc$x[,1:2],xlab=xlab,ylab=ylab, col=colores_batch, 
      main ="Principal components (PCA)")
 
-legend("topright", inset=c(-0.05,0),  # mueve la leyenda fuera
+legend("bottomleft",  
        legend=c("PIF", "NETCR", "NETCL"), 
        col=c("red", "blue", "green"), 
        pch=19, xpd=TRUE)
 
 text(pc$x[,1],pc$x[,2],pacientes_ID, pos=3, cex=.6)
 ```
+Por último, en la Figura 6, se muestra el dendrograma resultante del análisis de agrupamiento jerárquico, construido a partir de las distancias euclídeas entre las muestras. Este dendrograma permite observar la proximidad entre las muestras en función de sus perfiles metabolómicos. Aunque no se aprecia una separación totalmente definida, se puede identificar cierta tendencia a la agrupación de los individuos según su condición (caquéxicos y controles), lo que es consistente con las observaciones obtenidas previamente mediante el PCA.
 
-
-# Dendograma
-
-```{r}
+```{r, fig.cap = "Agrupamiento jerárquico de las muestras basado en las concentraciones de metabolitos.", echo=FALSE}
 # Distancia y clustering jerárquico
 d <- dist(t(expr_norm))  
 hc <- hclust(d, method = "average")
@@ -214,34 +222,37 @@ rect.hclust(hc, k = 2, border = c("red", "blue"))
 
 ```
 
-# DEG
-```{r}
+## 4.4 Análisis de expresión diferencial
+
+Se realizó un análisis de expresión diferencial para identificar metabolitos con diferencias significativas entre pacientes caquéxicos y controles. Los resultados se representan en la Figura 7 mediante un volcano plot, destacando aquellos metabolitos que cumplen simultáneamente los criterios de significación estadística (p < 0.05) y de magnitud de cambio (|log2FC| > 0.5) en rojo. Entre ellos, se identificaron el adipato, el 3-hidroxibutirato y el fumarato. Se aprecia, además, que todos los metabolitos presentan un valor de log2 fold change positivo, lo cual es coherente, ya que previamente se había observado que las concentraciones globales de metabolitos son, en general, superiores en las muestras de pacientes caquéxicos en comparación con las de los controles.
+
+```{r, include=FALSE}
 ttest <- function(x) {
-  tt = t.test(x[1:47], x[48:77])
+  tt = t.test(x[1:47], x[48:77]) # Aplico un test t entre los 47 caquéxicos y los 30 controles 
   return(c(
     t = tt$statistic,
     p.value = tt$p.value,
-    log2FC = log2(mean(x[1:47]) / mean(x[48:77]))
+    log2FC = log2(mean(x[1:47]) / mean(x[48:77])) # Calculo el log2 Fold Change entre las medias de caquéxicos y controles
   ))
 }
 
-ans <- apply(expr_norm, 1, ttest)
+ans <- apply(expr_norm, 1, ttest) # Aplico la función ttest() a cada fila de la matriz expr_norm (cada metabolito)
 ```
 
 
 
-```{r}
+```{r, include=FALSE}
 # Convertimos la matriz a data.frame
 ttest_df <- as.data.frame(t(ans))
 
-# Añadir nombres de los metabolitos (features)
-ttest_df$feature <- rownames(ttest_df)
+# Añadir nombres de los metabolitos
+ttest_df$metabolitos <- rownames(ttest_df)
 ```
 
 
-```{r}
+```{r, fig.cap = "Volcano plot de la expresión diferencial de metabolitos entre caquéxicos y controles.", echo=FALSE}
 EnhancedVolcano(ttest_df,
-                lab = ttest_df$feature,
+                lab = ttest_df$metabolitos,
                 x = 'log2FC',
                 y = 'p.value',
                 pCutoff = 0.05,
@@ -251,9 +262,25 @@ EnhancedVolcano(ttest_df,
                 title = 'Volcano Plot - Metabolitos')
 
 ```
+# 5. Discusión
+
+La caquexia es un síndrome asociado al cáncer caracterizado por una pérdida continua de masa muscular y peso corporal, acompañado de alteraciones metabólicas e inflamación sistémica [REFERENCIA 1]. Los resultados obtenidos en este trabajo muestran diferencias claras en el perfil metabolómico de pacientes caquéxicos frente a controles, destacando una tendencia general a mayores concentraciones de metabolitos en orina en los pacientes con caquexia, lo cual es esperable, ya que la degradación muscular característica de la caquexia provoca la liberación de metabolitos al torrente sanguíneo, que posteriormente son eliminados a través de la orina. Este comportamiento se ha reflejado tanto en los análisis multivariantes como en el análisis de expresión diferencial, donde metabolitos como el adipato, 3-hidroxibutirato y fumarato mostraron diferencias significativas entre ambos grupos. De hecho, el 3-hidroxibutirato, es un cuerpo cetónico que ha sido previamente relacionado con estados de caquexia y pérdida de peso severa en pacientes oncológicos, por lo que su presencia elevada en pacientes caquéxicos podría actuar como un marcador temprano de deterioro nutricional [REFERENCIA 2].
+
+
+# 6. Referencias
+
+
+# ANEXOS
 
 
 
 
 
 https://rdrr.io/cran/specmine.datasets/man/cachexia.html
+
+Cancer Cachexia: Definition, Staging, and Emerging
+Treatments
+
+NMR‑based metabolomics in real‑time monitoring of treatment
+induced toxicity and cachexia in head and neck cancer: a method
+for early detection of high risk patients
