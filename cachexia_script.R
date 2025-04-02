@@ -2,7 +2,10 @@
 #Carga y preparación de los datos
 ##################################################################
 
-
+library(SummarizedExperiment)
+library(tidyverse)
+library(POMA)
+library(EnhancedVolcano)
 
 # Cargo el csv 
 cachexia <- read.csv("human_cachexia.csv", check.names = FALSE) 
@@ -132,7 +135,7 @@ rect.hclust(hc, k = 2, border = c("red", "blue"))
 
 
 ##################################################################
-#Análisis de expresión diferencial
+# Análisis de expresión diferencial
 ##################################################################
 
 
